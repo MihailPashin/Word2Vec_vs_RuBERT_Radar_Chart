@@ -97,8 +97,6 @@ class Word2VecModel:
         print(candidates)
         for key, value in enumerate(candidates):
             rst_without_dublicates = []
-          #print(f'item - {value}')
-            print(f'value - {value}')
             print(f'kostroma - {self}')
             embed_finding=self.save_neigbor(value)
             print(f' word2vec - {embed_finding}, candidates - {value} ')

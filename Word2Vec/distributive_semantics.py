@@ -1,77 +1,109 @@
-import pandas
 import gensim
-class word2vec:
-    """Un utilisateur."""
-    TOKEN_RE = re.compile(r'[\w\d]+')
-    def __init__(self, name: str):
-        """Initialise un nom et une methode de contact."""
-        self.name = name
+import pandas as pd
+import re
+import numpy as np
+from nltk.stem.snowball import SnowballStemmer
+from operator import itemgetter
+from collections import Counter
+import itertools
 
 
-    def creating_word2vec_model():
-      train_tokens = tokenize_corpus(full_dataset)
-      kostroma_word2vec = gensim.models.Word2Vec(sentences=train_tokens, vector_size=30,
-                                      window=4, min_count=5, workers=6,
-                                      sg=2, epochs=20)
-      return kostroma_word2vec
+class Word2VecModel:
 
-    @name.setter
-    def name(self, value):
-        if len(value) > 10:
-            raise Exception("Переименуйте модель")
+    def __init__(self, model_path=None):
+        if model_path:
+            try:
+                self.model = gensim.models.Word2Vec.load(model_path)
+            except:
+                print('Путь к файлу некорректный')
+                self.model = None
         else:
-            self.__name = value
+            self.model = None
+
+    def creating_word2vec_model(self, train_tokens, vector_size=30, window=4, min_count=5, workers=6, sg=2, epochs=20):
+        self.model = gensim.models.Word2Vec(sentences=train_tokens, vector_size=vector_size, window=window,
+                                             min_count=min_count, workers=workers, sg=sg, epochs=epochs)
+
 
     def tokenize_text_simple_regex(txt, min_token_size=4):
         #print(txt)
+        TOKEN_RE = re.compile(r'[\w\d]+')
         txt = txt.lower()
         all_tokens = TOKEN_RE.findall(txt)
         return [token for token in all_tokens if len(token) >= min_token_size]
 
-    def character_tokenize(txt):
-        return list(txt)
+    def tokenize_corpus(self,texts, tokenizer=tokenize_text_simple_regex):
+        #print(texts[0:4])
+        return [tokenizer(text) for text in texts]
+    # Поиск соседей
+    # My class Word2VecModel:
+    def get_neighbor(self,word,neighbor_counts=20):
 
-    def tokenize_corpus(texts, tokenizer=tokenize_text_simple_regex, **tokenizer_kwargs):
-        #print(texts)
-        return [tokenizer(text, **tokenizer_kwargs) for text in texts]
-    def build_vocabulary(tokenized_texts, max_size=50000, max_doc_freq=0.89, min_count=5, pad_word=None):
-        word_counts = collections.defaultdict(int)
-        doc_n = 0
+        try:
+            # Derive the vector for the word "парковка" in our model
+            vector = self.model.wv[word]
 
-        # посчитать количество документов, в которых употребляется каждое слово
-        # а также общее количество документов
-        for txt in tokenized_texts:
-            doc_n += 1
-            unique_text_tokens = set(txt)
-            for token in unique_text_tokens:
-                word_counts[token] += 1
+            normal_neighbors = self.model.wv.most_similar([vector], topn=neighbor_counts)
+            aggregated_sosedi=[]
 
-        # убрать слишком редкие и слишком частые слова
-        word_counts = {word: cnt for word, cnt in word_counts.items()
-                       if cnt >= min_count and cnt / doc_n <= max_doc_freq}
+            for neighbor in normal_neighbors[0:50]:
+                aggregated_sosedi.append(neighbor[0])
+            #print(aggregated_sosedi)
+            return aggregated_sosedi
+        except KeyError:
+            print(f"Слово {word} не найдено в обученной модели")
+            pass
 
-        # отсортировать слова по убыванию частоты
-        sorted_word_counts = sorted(word_counts.items(),
-                                    reverse=True,
-                                    key=lambda pair: pair[1])
+            #raise
+    # Поиск соседи по списку list
+    def save_neigbor(self, lists):
+        sosedi = []
+        try:
+          for el in lists:
+              print(f'{el} s')
+              sosedis=self.get_neighbor(el)
+              if sosedis:
+                sosedi.extend(sosedis)
+                print(f'sosedis - {sosedis}')
+              else:
+                print(f"Ненайденное слово пропущенное")
 
-        # добавим несуществующее слово с индексом 0 для удобства пакетной обработки
-        if pad_word is not None:
-            sorted_word_counts = [(pad_word, 0)] + sorted_word_counts
+          return sosedi
+        except TypeError:
+            pass
 
-        # если у нас по прежнему слишком много слов, оставить только max_size самых частотных
-        if len(word_counts) > max_size:
-            sorted_word_counts = sorted_word_counts[:max_size]
+    def stemmer_and_regex(self,neighbors):
+        stemmer = SnowballStemmer("russian")
+        answer =  [ [stemmer.stem(word).lower()+'\w{0,}' if i < len(item.split()) - 1
+                    else stemmer.stem(word).lower()
+                    for i, word in enumerate(item.split())]\
+           for item in neighbors ]
+           #for item in neighbors # deleted row - for item in neighbors
+            # deleted row - for item in neighbors
+        united_list = [(' '.join(sublist)).strip().lower() for sublist in answer]
+        rst_without_dublicates = list(set(itertools.chain(united_list)))
+        #print(f'without_dublicates {rst_without_dublicates}')
+        return rst_without_dublicates
 
-        # нумеруем слова
-        word2id = {word: i for i, (word, _) in enumerate(sorted_word_counts)}
+    def filter(self,my_dict):
+        list_by_groups=[]
+      # Распаковка вложенного словаря
+        name_groups = []
+        candidates = []
+        for item in my_dict.values():
+            name_groups.append(item['name_group'])
+            candidates.append(item['candidates'])
+        print(name_groups)
+        print(candidates)
+        for key, value in enumerate(candidates):
+            rst_without_dublicates = []
+          #print(f'item - {value}')
+            print(f'value - {value}')
+            print(f'kostroma - {self}')
+            embed_finding=self.save_neigbor(value)
+            print(f' word2vec - {embed_finding}, candidates - {value} ')
 
-        # нормируем частоты слов
-        word2freq = np.array([cnt / doc_n for _, cnt in sorted_word_counts], dtype='float32')
-
-        return word2id, word2freq
-
-
-PAD_TOKEN = '__PAD__'
-NUMERIC_TOKEN = '__NUMBER__'
-NUMERIC_RE = re.compile(r'^([0-9.,e+\-]+|[mcxvi]+)$', re.I)
+            result=self.stemmer_and_regex(embed_finding)
+  
+            list_by_groups.append(result) #result_for_one_group
+        return  list_by_groups
